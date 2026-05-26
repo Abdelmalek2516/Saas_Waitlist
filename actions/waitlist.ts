@@ -1,12 +1,11 @@
 "use server";
 
 import crypto from "crypto";
-import mongoose from "mongoose";
+import mongoose, { HydratedDocument } from "mongoose";
 import { z } from "zod";
 import dbConnect from "@/lib/db";
-import User from "@/models/Users.model";
+import User, { IUser } from "@/models/Users.model";
 
-// Zod schema — email is required, referralCode (the ref param) is optional
 const waitlistSchema = z.object({
   email: z.string().email({ message: "Please provide a valid email address." }),
   referralCode: z.string().optional(),
@@ -14,7 +13,7 @@ const waitlistSchema = z.object({
 
 export async function joinWaitlist(prevState: unknown, formData: FormData) {
   const rawEmail = formData.get("email");
-  const rawRef = formData.get("ref"); // optional referral code from the URL
+  const rawRef = formData.get("ref");
 
   const validatedFields = waitlistSchema.safeParse({
     email: rawEmail,
@@ -34,27 +33,26 @@ export async function joinWaitlist(prevState: unknown, formData: FormData) {
   try {
     await dbConnect();
 
-    // Check for duplicate email up-front for a fast, friendly error
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return { error: "This email is already on the waitlist!" };
     }
 
-    // Validate the referral code if one was provided
     let referrer = null;
     if (incomingRef) {
       referrer = await User.findOne({ referralCode: incomingRef });
-      // If the code doesn't match anyone we simply ignore it — no hard failure
     }
 
-    // Generate a unique referral code for the new user (retry on collision)
+    // Create the new user — typed explicitly so TypeScript picks the
+    // single-document overload of User.create() and sees createdAt.
+    let newUser: HydratedDocument<IUser> | null = null;
     let newReferralCode: string | null = null;
     const maxAttempts = 5;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const candidate = crypto.randomBytes(4).toString("hex").slice(0, 6);
       try {
-        await User.create({
+        newUser = await User.create({
           email,
           referralCode: candidate,
           referredBy: referrer ? referrer.referralCode : undefined,
@@ -75,28 +73,40 @@ export async function joinWaitlist(prevState: unknown, formData: FormData) {
           return { error: "This email is already on the waitlist!" };
         }
         if (isRefDup && attempt < maxAttempts - 1) {
-          continue; // try a new code
+          continue;
         }
         throw err;
       }
     }
 
-    if (!newReferralCode) {
+    if (!newReferralCode || !newUser) {
       return {
         error: "We couldn't create your referral code. Please try again.",
       };
     }
 
-    // Atomically increment the referrer's count now that the signup succeeded
+    // Increment referrer's count atomically
     if (referrer) {
       await User.findByIdAndUpdate(referrer._id, {
         $inc: { referralCount: 1 },
       });
     }
 
+    // ── Waitlist position ────────────────────────────────────────────────────
+    // Run both queries in parallel: position = users who signed up before
+    // this one (by createdAt) + 1; totalSignups = full collection count.
+    const [position, totalSignups] = await Promise.all([
+      User.countDocuments({ createdAt: { $lt: newUser.createdAt } }).then(
+        (c) => c + 1,
+      ),
+      User.countDocuments(),
+    ]);
+
     return {
-      success: "You're on the list! Share your link to move up.",
+      success: "You're on the list!",
       referralCode: newReferralCode,
+      position,
+      totalSignups,
     };
   } catch (error: unknown) {
     console.error("Waitlist signup error:", error);

@@ -6,6 +6,9 @@ export interface IUser extends Document {
   referredBy?: string;
   referralCount: number;
   status: "waitlisted" | "invited" | "joined";
+  // Populated automatically by { timestamps: true } in the schema
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 const UserSchema: Schema<IUser> = new Schema(
