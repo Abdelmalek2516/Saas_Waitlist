@@ -1,10 +1,10 @@
 "use server";
 
 import crypto from "crypto";
-import mongoose from "mongoose";
+import mongoose, { HydratedDocument } from "mongoose";
 import { z } from "zod";
 import dbConnect from "@/lib/db";
-import User from "@/models/Users.model";
+import User, { IUser } from "@/models/Users.model";
 
 const waitlistSchema = z.object({
   email: z.string().email({ message: "Please provide a valid email address." }),
@@ -43,9 +43,9 @@ export async function joinWaitlist(prevState: unknown, formData: FormData) {
       referrer = await User.findOne({ referralCode: incomingRef });
     }
 
-    // Create the new user — keep a reference to the document so we can
-    // use its createdAt timestamp for the position query below.
-    let newUser: Awaited<ReturnType<typeof User.create>> | null = null;
+    // Create the new user — typed explicitly so TypeScript picks the
+    // single-document overload of User.create() and sees createdAt.
+    let newUser: HydratedDocument<IUser> | null = null;
     let newReferralCode: string | null = null;
     const maxAttempts = 5;
 
