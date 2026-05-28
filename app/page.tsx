@@ -12,7 +12,51 @@ import {
   Shield,
   Sparkles,
 } from "lucide-react";
+import { useUser, UserButton } from "@clerk/nextjs";
+import Link from "next/link";
 import { joinWaitlist } from "@/actions/waitlist";
+
+// ── Auth-aware nav actions ────────────────────────────────────────────────────
+// Must be a separate component because useUser() is a hook
+function NavActions() {
+  const { isSignedIn, isLoaded } = useUser();
+
+  if (!isLoaded) {
+    // Render a placeholder to avoid layout shift while Clerk loads
+    return <div className="h-7 w-28 animate-pulse rounded-lg bg-slate-100" />;
+  }
+
+  if (isSignedIn) {
+    return (
+      <div className="flex items-center gap-3">
+        <Link
+          href="/dashboard"
+          className="text-sm font-medium text-slate-500 transition-colors duration-200 hover:text-slate-800"
+        >
+          My position
+        </Link>
+        <UserButton />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-3">
+      <Link
+        href="/sign-in"
+        className="text-sm font-medium text-slate-500 transition-colors duration-200 hover:text-slate-800"
+      >
+        Sign in
+      </Link>
+      <a
+        href="#email"
+        className="inline-flex items-center rounded-lg bg-slate-900 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-slate-800"
+      >
+        Sign up
+      </a>
+    </div>
+  );
+}
 
 // ── Avatar colours (full strings so Tailwind includes them) ──────────────────
 const AVATAR_GRADIENTS = [
@@ -309,20 +353,7 @@ export default function Home() {
               LaunchKit
             </span>
           </div>
-          <div className="flex items-center gap-3">
-            <a
-              href="#"
-              className="text-sm font-medium text-slate-500 transition-colors duration-200 hover:text-slate-800"
-            >
-              Sign in
-            </a>
-            <a
-              href="#"
-              className="inline-flex items-center rounded-lg bg-slate-900 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-slate-800"
-            >
-              Sign up
-            </a>
-          </div>
+          <NavActions />
         </div>
       </header>
 

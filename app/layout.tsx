@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { DM_Sans } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
-// DM Sans — rounded terminals, warm and approachable, widely used in modern SaaS
 const dmSans = DM_Sans({
   subsets: ["latin"],
   variable: "--font-sans",
@@ -28,8 +28,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${dmSans.variable} h-full antialiased`}>
-      <body className="flex min-h-full flex-col">{children}</body>
-    </html>
+    <ClerkProvider afterSignOutUrl="/">
+      <html lang="en" className={`${dmSans.variable} h-full antialiased`}>
+        <body className="flex min-h-full flex-col">{children}</body>
+      </html>
+    </ClerkProvider>
   );
 }
