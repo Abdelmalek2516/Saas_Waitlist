@@ -1,9 +1,8 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
-// Only /dashboard and its sub-paths require authentication.
+// Only /dashboard and /admin require authentication.
 // The waitlist home page stays fully public.
-const isProtectedRoute = createRouteMatcher(["/dashboard(.*)"]);
-
+const isProtectedRoute = createRouteMatcher(["/dashboard(.*)", "/admin(.*)"]);
 export default clerkMiddleware(async (auth, req) => {
   if (isProtectedRoute(req)) await auth.protect();
 });
