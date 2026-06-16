@@ -44,12 +44,12 @@ function NavActions() {
       >
         Sign in
       </Link>
-      <a
-        href="#email"
+      <Link
+        href="/sign-up"
         className="inline-flex items-center rounded-lg bg-slate-900 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-slate-800"
       >
         Sign up
-      </a>
+      </Link>
     </div>
   );
 }

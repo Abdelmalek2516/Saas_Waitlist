@@ -169,3 +169,15 @@
     animation: fade-in-up 0.45s ease-out both;
   }
 }
+
+/* ── Clerk appearance overrides ─────────────────────────────────────────────── */
+/* The appearance prop handles most styling; this is a safety net for any        */
+/* Clerk-injected branding elements that can't be controlled via the prop.       */
+
+/* "Secured by Clerk" footer brand */
+.cl-footer,
+.cl-internal-b3fm6y,
+[data-localization-key="footerPageLink__privacy"],
+[data-localization-key="footerPageLink__terms"] {
+  display: none !important;
+}
