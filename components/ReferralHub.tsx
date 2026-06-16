@@ -1,6 +1,6 @@
 "use client";
 
-import { MailCheck } from "lucide-react";
+import { Bookmark, MailCheck } from "lucide-react";
 import { ShareButtons } from "@/components/ShareButtons";
 
 interface ReferralHubProps {
@@ -19,6 +19,7 @@ export function ReferralHub({
   // window is safe here — this component only ever renders inside WaitlistForm
   // which is a "use client" tree, so it always runs in the browser.
   const referralLink = `${window.location.origin}/?ref=${referralCode}`;
+  const statusUrl = `${window.location.origin}/status/${referralCode}`;
 
   const aheadPct =
     totalSignups > 1
@@ -112,6 +113,24 @@ export function ReferralHub({
       <p className="text-center text-xs text-slate-400">
         Every referral that signs up moves you one spot closer to the front.
       </p>
+
+      {/* ── Status page (bookmarkable) ── */}
+      <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div className="flex items-center gap-2">
+          <Bookmark className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+          <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
+            Your status page
+          </p>
+        </div>
+        <p className="break-all font-mono text-xs text-slate-500">
+          {statusUrl}
+        </p>
+        <ShareButtons
+          referralLink={statusUrl}
+          shareTextX={`Check my waitlist position — I'm #${position}:`}
+          shareTextWA={`Check my LaunchKit waitlist position: ${statusUrl}`}
+        />
+      </div>
 
       {/* ── Account creation CTA ── */}
       <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-center">
