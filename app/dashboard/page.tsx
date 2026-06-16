@@ -74,7 +74,7 @@ export default async function DashboardPage() {
   const nextMilestone = MILESTONES.find((m) => m < position) ?? null;
   const spotsNeeded = nextMilestone ? position - nextMilestone : null;
 
-  const shareTextX = `I'm #${position} on the waitlist 🚀 Join me:`;
+  const shareTextX = `I'm #${position} on the waitlist ! Join me:`;
   const shareTextWA = `I'm #${position} on the waitlist! Join with my link: ${referralLink}`;
 
   return (
