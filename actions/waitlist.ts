@@ -4,14 +4,104 @@ import crypto from "crypto";
 import mongoose, { HydratedDocument } from "mongoose";
 import { z } from "zod";
 import dbConnect from "@/lib/db";
+import { getClientIp } from "@/lib/getClientIp";
 import User, { IUser } from "@/models/Users.model";
+import RateLimit from "@/models/RateLimit.model";
 
+// ── Constants ──────────────────────────────────────────────────────────────────
+const RATE_LIMIT_MAX = 5;           // max attempts
+const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+
+// ── Input schema ──────────────────────────────────────────────────────────────
 const waitlistSchema = z.object({
   email: z.string().email({ message: "Please provide a valid email address." }),
   referralCode: z.string().optional(),
 });
 
+// ── GDPR-safe IP hashing ─────────────────────────────────────────────────────
+// We never store raw IPs. sha256(ip + salt) is irreversible.
+function hashIp(ip: string): string {
+  const salt = process.env.IP_SALT ?? "default-dev-salt-change-in-prod";
+  return crypto.createHash("sha256").update(ip + salt).digest("hex");
+}
+
+// ── Cloudflare Turnstile server-side verification ────────────────────────────
+async function verifyTurnstile(token: string): Promise<boolean> {
+  const secretKey = process.env.TURNSTILE_SECRET_KEY;
+  // If no key is configured (e.g., local dev) we skip verification.
+  if (!secretKey) return true;
+  // Empty token when key is configured = reject immediately.
+  if (!token) return false;
+
+  try {
+    const resp = await fetch(
+      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ secret: secretKey, response: token }),
+      },
+    );
+    const data = (await resp.json()) as { success: boolean };
+    return data.success === true;
+  } catch {
+    // Network failure: fail open so a Cloudflare outage doesn't brick signups.
+    return true;
+  }
+}
+
+// ── Atomic rate-limiter ───────────────────────────────────────────────────────
+// Uses a single findOneAndUpdate($inc) to avoid any check-then-act race condition.
+// Simultaneous bot requests all see the incremented counter, not the stale zero.
+async function checkRateLimit(ipHash: string): Promise<boolean> {
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + RATE_LIMIT_WINDOW_MS);
+
+  const record = await RateLimit.findOneAndUpdate(
+    { ipHash, action: "waitlist" },
+    {
+      $inc: { count: 1 },
+      // Only set expiresAt on document creation so the window doesn't reset.
+      $setOnInsert: { expiresAt },
+    },
+    { upsert: true, new: true },
+  );
+
+  return record.count <= RATE_LIMIT_MAX;
+}
+
+// ── Main action ───────────────────────────────────────────────────────────────
 export async function joinWaitlist(prevState: unknown, formData: FormData) {
+  // ── 1. Honeypot check ──────────────────────────────────────────────────────
+  // Real users never fill this field; bots scraping the DOM will.
+  // The field is named to trick autofill-resistant scrapers but blocked from
+  // browser autofill via tabIndex=-1, autoComplete=off, aria-hidden=true.
+  const honeypot = formData.get("secondary_email_confirm");
+  if (honeypot && String(honeypot).trim() !== "") {
+    // Silently pretend success so bots don't know they were detected.
+    return { error: "Something went wrong on our end. Please try again later." };
+  }
+
+  // ── 2. IP rate limiting (atomic, GDPR-safe) ────────────────────────────────
+  const rawIp = await getClientIp();
+  const ipHash = hashIp(rawIp);
+
+  await dbConnect();
+  const allowed = await checkRateLimit(ipHash);
+  if (!allowed) {
+    return {
+      error: "Too many requests. Please wait 10 minutes before trying again.",
+    };
+  }
+
+  // ── 3. Cloudflare Turnstile verification ───────────────────────────────────
+  const turnstileToken = String(formData.get("cf-turnstile-response") ?? "");
+  const turnstileOk = await verifyTurnstile(turnstileToken);
+  if (!turnstileOk) {
+    return { error: "Bot protection check failed. Please refresh and try again." };
+  }
+
+  // ── 4. Input validation ────────────────────────────────────────────────────
   const rawEmail = formData.get("email");
   const rawRef = formData.get("ref");
 
@@ -30,9 +120,8 @@ export async function joinWaitlist(prevState: unknown, formData: FormData) {
 
   const { email, referralCode: incomingRef } = validatedFields.data;
 
+  // ── 5. Business logic ──────────────────────────────────────────────────────
   try {
-    await dbConnect();
-
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return { error: "This email is already on the waitlist!" };
@@ -43,8 +132,6 @@ export async function joinWaitlist(prevState: unknown, formData: FormData) {
       referrer = await User.findOne({ referralCode: incomingRef });
     }
 
-    // Create the new user — typed explicitly so TypeScript picks the
-    // single-document overload of User.create() and sees createdAt.
     let newUser: HydratedDocument<IUser> | null = null;
     let newReferralCode: string | null = null;
     const maxAttempts = 5;
@@ -85,16 +172,12 @@ export async function joinWaitlist(prevState: unknown, formData: FormData) {
       };
     }
 
-    // Increment referrer's count atomically
     if (referrer) {
       await User.findByIdAndUpdate(referrer._id, {
         $inc: { referralCount: 1 },
       });
     }
 
-    // ── Waitlist position ────────────────────────────────────────────────────
-    // Run both queries in parallel: position = users who signed up before
-    // this one (by createdAt) + 1; totalSignups = full collection count.
     const [position, totalSignups] = await Promise.all([
       User.countDocuments({ createdAt: { $lt: newUser.createdAt } }).then(
         (c) => c + 1,
@@ -109,6 +192,7 @@ export async function joinWaitlist(prevState: unknown, formData: FormData) {
       totalSignups,
     };
   } catch (error: unknown) {
+    // Never expose internal error details to the client.
     console.error("Waitlist signup error:", error);
 
     if (error instanceof mongoose.Error.ValidationError) {

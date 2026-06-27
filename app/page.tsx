@@ -11,8 +11,16 @@ import {
 } from "lucide-react";
 import { useUser, UserButton } from "@clerk/nextjs";
 import Link from "next/link";
+import Script from "next/script";
 import { joinWaitlist } from "@/actions/waitlist";
 import { ReferralHub } from "@/components/ReferralHub";
+
+// Cloudflare Turnstile global types (injected by their script)
+declare global {
+  interface Window {
+    turnstile?: { reset: (selector?: string) => void };
+  }
+}
 
 // ── Auth-aware nav actions ────────────────────────────────────────────────────
 function NavActions() {
@@ -63,6 +71,9 @@ const AVATAR_GRADIENTS = [
   "from-sky-300 to-cyan-500",
 ];
 
+// Turnstile site key — undefined in local dev (bot check skipped gracefully)
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+
 // ── Waitlist form (needs Suspense for useSearchParams) ────────────────────────
 // Responsibility: collect the email, submit to the server action, and hand off
 // to ReferralHub once we have a referral code back. Nothing else.
@@ -77,6 +88,15 @@ function WaitlistForm() {
     if (!state?.referralCode) inputRef.current?.focus();
   }, [state?.referralCode]);
 
+  // ── Fix #5: Reset Turnstile after every server error ─────────────────────
+  // Turnstile tokens are single-use. Without a reset, a user who corrects a
+  // typo and resubmits gets "Failed Turnstile" even though they are human.
+  useEffect(() => {
+    if (state?.error && TURNSTILE_SITE_KEY) {
+      window.turnstile?.reset(".cf-turnstile");
+    }
+  }, [state?.error]);
+
   // ── Post-signup: hand off entirely to ReferralHub ────────────────────────
   if (state?.referralCode) {
     return (
@@ -88,10 +108,34 @@ function WaitlistForm() {
     );
   }
 
-  // ── Pre-signup: just the email form ──────────────────────────────────────
+  // ── Pre-signup: email form with honeypot + Turnstile ─────────────────────
   return (
     <form action={formAction} className="space-y-3">
       <input type="hidden" name="ref" value={refCode} />
+
+      {/*
+       * ── Fix #3: Autofill-safe honeypot ──────────────────────────────────
+       * Named "secondary_email_confirm" to look attractive to bots but not
+       * to password managers / autofill (which only fill primary fields).
+       * tabIndex=-1    → keyboard users never land on it
+       * autoComplete=off → browser ignores it
+       * aria-hidden=true → screen readers skip it
+       * The CSS visually hides it without display:none (some bots check that).
+       */}
+      <input
+        type="text"
+        name="secondary_email_confirm"
+        tabIndex={-1}
+        autoComplete="off"
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          left: "-9999px",
+          width: "1px",
+          height: "1px",
+          opacity: 0,
+        }}
+      />
 
       <div className="flex flex-col gap-2 sm:flex-row">
         <input
@@ -102,7 +146,7 @@ function WaitlistForm() {
           placeholder="name@example.com"
           required
           disabled={isPending}
-          className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm text-slate-900 shadow-md shadow-slate-100 placeholder:text-slate-400 transition-all duration-200 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:opacity-50"
+          className="flex-1 rounded-none border--200 bg-white px-4 py-3.5 text-sm text-slate-900 shadow-md shadow-slate-100 placeholder:text-slate-400 transition-all duration-200 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:opacity-50"
         />
         <button
           type="submit"
@@ -142,6 +186,20 @@ function WaitlistForm() {
         </button>
       </div>
 
+      {/* ── Cloudflare Turnstile widget ────────────────────────────────────
+       * Only rendered when NEXT_PUBLIC_TURNSTILE_SITE_KEY is set.
+       * The name "cf-turnstile-response" matches what the server reads. */}
+      {TURNSTILE_SITE_KEY && (
+        <div className="flex justify-center pt-1">
+          <div
+            className="cf-turnstile"
+            data-sitekey={TURNSTILE_SITE_KEY}
+            data-theme="light"
+            data-size="normal"
+          />
+        </div>
+      )}
+
       {state?.error && (
         <p className="flex items-center gap-1.5 text-sm text-red-500">
           <span className="inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-red-100 text-[10px] font-bold text-red-500">
@@ -163,6 +221,14 @@ function WaitlistForm() {
 // ── Page shell ────────────────────────────────────────────────────────────────
 export default function Home() {
   return (
+    <>
+    {/* Load Turnstile script only when the site key is configured */}
+    {TURNSTILE_SITE_KEY && (
+      <Script
+        src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+        strategy="lazyOnload"
+      />
+    )}
     <div
       className="relative flex min-h-screen flex-col"
       style={{
@@ -257,5 +323,6 @@ export default function Home() {
         </div>
       </main>
     </div>
+    </>
   );
 }
