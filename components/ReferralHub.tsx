@@ -132,22 +132,6 @@ export function ReferralHub({
         />
       </div>
 
-      {/* ── Account creation CTA ── */}
-      <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-center">
-        <p className="text-xs font-medium text-slate-600">
-          Want to check your position any time?
-        </p>
-        <p className="mt-0.5 text-xs text-slate-400">
-          Create a free account — sign in whenever you like to see your live
-          rank and referral count.
-        </p>
-        <a
-          href="/sign-up"
-          className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition-all duration-200 hover:bg-slate-800"
-        >
-          Create your account →
-        </a>
-      </div>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 "use server";
 
 import crypto from "crypto";
+import { cookies } from "next/headers";
 import mongoose, { HydratedDocument } from "mongoose";
 import { z } from "zod";
 import dbConnect from "@/lib/db";
@@ -124,7 +125,27 @@ export async function joinWaitlist(prevState: unknown, formData: FormData) {
   try {
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return { error: "This email is already on the waitlist!" };
+      const [position, totalSignups] = await Promise.all([
+        User.countDocuments({ createdAt: { $lt: existingUser.createdAt } }).then(
+          (c) => c + 1,
+        ),
+        User.countDocuments(),
+      ]);
+
+      const cookieStore = await cookies();
+      cookieStore.set("waitlist_ref", existingUser.referralCode, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 60 * 60 * 24 * 365, // 1 year
+      });
+
+      return {
+        success: "Welcome back! Here's your status.",
+        referralCode: existingUser.referralCode,
+        position,
+        totalSignups,
+      };
     }
 
     let referrer = null;
@@ -184,6 +205,14 @@ export async function joinWaitlist(prevState: unknown, formData: FormData) {
       ),
       User.countDocuments(),
     ]);
+
+    const cookieStore = await cookies();
+    cookieStore.set("waitlist_ref", newReferralCode, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 365, // 1 year
+    });
 
     return {
       success: "You're on the list!",
