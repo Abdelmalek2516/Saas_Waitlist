@@ -58,14 +58,20 @@ export default async function Home() {
         {/* ── Sticky top nav ── */}
         <header className="sticky top-0 z-20 border-b border-blue-100/80 bg-white/70 backdrop-blur-md">
           <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-3.5">
-            <div className="flex items-center gap-2 cursor-pointer">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-sky-400 to-blue-600 shadow-sm shadow-blue-200">
-                <Sparkles className="h-3.5 w-3.5 text-white" />
-              </div>
-              <span className="text-sm font-bold tracking-tight text-slate-800">
-                LaunchKit
-              </span>
-            </div>
+            <form action={async () => {
+              "use server";
+              const cookieStore = await cookies();
+              cookieStore.delete("waitlist_ref");
+            }}>
+              <button type="submit" className="flex items-center gap-2 cursor-pointer bg-transparent border-none p-0 outline-none">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-sky-400 to-blue-600 shadow-sm shadow-blue-200">
+                  <Sparkles className="h-3.5 w-3.5 text-white" />
+                </div>
+                <span className="text-sm font-bold tracking-tight text-slate-800">
+                  LaunchKit
+                </span>
+              </button>
+            </form>
             {/* The sign up / sign in buttons have been removed. Login is strictly for /admin now. */}
           </div>
         </header>

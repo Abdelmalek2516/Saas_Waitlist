@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Bookmark, MailCheck } from "lucide-react";
 import { ShareButtons } from "@/components/ShareButtons";
 
@@ -16,10 +17,13 @@ export function ReferralHub({
   position,
   totalSignups,
 }: ReferralHubProps) {
-  // window is safe here — this component only ever renders inside WaitlistForm
-  // which is a "use client" tree, so it always runs in the browser.
-  const referralLink = `${window.location.origin}/?ref=${referralCode}`;
-  const statusUrl = `${window.location.origin}/status/${referralCode}`;
+  const [origin, setOrigin] = useState("");
+  useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
+
+  const referralLink = origin ? `${origin}/?ref=${referralCode}` : "";
+  const statusUrl = origin ? `${origin}/status/${referralCode}` : "";
 
   const aheadPct =
     totalSignups > 1
